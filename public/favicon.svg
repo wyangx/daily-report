@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- 背景 -->
+  <rect width="32" height="32" rx="6" fill="#b45309"/>
+  
+  <!-- 报纸/文档图标 -->
+  <rect x="7" y="6" width="18" height="20" rx="2" fill="white"/>
+  
+  <!-- 标题线 -->
+  <rect x="10" y="10" width="12" height="2" rx="1" fill="#b45309"/>
+  
+  <!-- 内容线 -->
+  <rect x="10" y="14" width="10" height="1.5" rx="0.75" fill="#d6d3d1"/>
+  <rect x="10" y="17" width="12" height="1.5" rx="0.75" fill="#d6d3d1"/>
+  <rect x="10" y="20" width="8" height="1.5" rx="0.75" fill="#d6d3d1"/>
+</svg>
