@@ -191,9 +191,19 @@ app.get('/archives', (req, res) => {
     </a>
   `).join('');
   
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
+  
   const html = template
     .replace(/\{\{#each reports\}\}[\s\S]*?\{\{\/each\}\}/, reportsHtml)
-    .replace(/\{\{#if noReports\}\}[\s\S]*?\{\{\/if\}\}/, reports.length === 0 ? '<div class="empty-state"><p>暂无往期日报</p></div>' : '');
+    .replace(/\{\{#if noReports\}\}[\s\S]*?\{\{\/if\}\}/, reports.length === 0 ? '<div class="empty-state"><p>暂无往期日报</p></div>' : '')
+    .replace('{{isoDate}}', now.toISOString())
+    .replace('{{date}}', dateStr);
   
   res.send(html);
 });
