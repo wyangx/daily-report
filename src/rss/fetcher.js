@@ -51,11 +51,34 @@ export async function fetchAllNews() {
     .filter(result => result.status === 'fulfilled')
     .flatMap(result => result.value);
   
+  // 去重：先按 link 去重（保留最新），再按 title+source 去重
+  const seenLinks = new Map();
+  const seenTitleSource = new Set();
+  const uniqueNews = [];
+
+  for (const news of allNews) {
+    const linkKey = news.link?.trim();
+    if (linkKey) {
+      if (seenLinks.has(linkKey)) continue;
+      seenLinks.set(linkKey, true);
+    }
+
+    const titleKey = `${news.title?.trim()}|${news.source}`;
+    if (seenTitleSource.has(titleKey)) continue;
+    seenTitleSource.add(titleKey);
+
+    uniqueNews.push(news);
+  }
+
   // 按发布时间排序，最新的在前
-  allNews.sort((a, b) => b.pubDate - a.pubDate);
+  uniqueNews.sort((a, b) => b.pubDate - a.pubDate);
   
-  console.log(`共抓取到 ${allNews.length} 条新闻`);
-  return allNews;
+  const removed = allNews.length - uniqueNews.length;
+  if (removed > 0) {
+    console.log(`去重: 移除 ${removed} 条重复新闻`);
+  }
+  console.log(`共抓取到 ${uniqueNews.length} 条新闻`);
+  return uniqueNews;
 }
 
 /**
