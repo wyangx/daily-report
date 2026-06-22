@@ -54,7 +54,7 @@ async function callAiApi(prompt) {
 /**
  * 构建新闻总结提示词
  */
-function buildSummaryPrompt(newsList) {
+export function buildSummaryPrompt(newsList) {
   const newsText = newsList.map((news, index) => {
     return `[#${index + 1}] ${news.title}
 来源：${news.source} | 分类：${news.category}
@@ -176,7 +176,7 @@ export async function summarizeNews(newsList) {
 /**
  * 将 [#N] 引用转换为可点击的链接
  */
-function convertReferencesToLinks(content, newsList) {
+export function convertReferencesToLinks(content, newsList) {
   // 处理多个引用在一起的情况，如 [#1, #5] 或 [#1,#2,#3]
   return content.replace(/\[#([\d,\s#]+)\]/g, (match, numsStr) => {
     // 提取所有数字
@@ -200,7 +200,7 @@ function convertReferencesToLinks(content, newsList) {
 /**
  * 生成备用总结（当AI不可用时）
  */
-function generateFallbackSummary(newsList) {
+export function generateFallbackSummary(newsList) {
   const date = new Date().toLocaleDateString('zh-CN');
   
   let markdown = `# 每日新闻日报\n\n`;
