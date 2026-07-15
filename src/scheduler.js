@@ -4,106 +4,23 @@ import { fetchAllNews } from './rss/fetcher.js';
 import { formatNewsList } from './rss/parser.js';
 import { summarizeNews } from './ai/summarizer.js';
 import { createFsReportStore } from './report/store.js';
+import { createDailyReportPipeline } from './report/pipeline.js';
 
 const reportStore = createFsReportStore(config.paths.news);
-
-/**
- * 本地日历日 YYYY-MM-DD（不用 UTC，避免凌晨错日）
- */
-function toLocalDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+const dailyReportPipeline = createDailyReportPipeline({
+  fetchNews: fetchAllNews,
+  formatNewsList,
+  summarizeNews,
+  reportStore,
+  getNow: () => new Date(),
+  logger: console,
+});
 
 /**
  * 生成日报数据
  */
 export async function generateDailyReport() {
-  console.log('开始生成日报...');
-  
-  try {
-    // 1. 获取新闻
-    const rawNews = await fetchAllNews();
-    
-    if (rawNews.length === 0) {
-      console.warn('没有获取到新闻，跳过生成');
-      return null;
-    }
-    
-    // 2. 过滤日期：只保留昨天0点到现在的新闻
-    const now = new Date();
-    const yesterdayStart = new Date(now);
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    yesterdayStart.setHours(0, 0, 0, 0);
-    
-    const dateFilteredNews = rawNews.filter(news => {
-      const pubDate = new Date(news.pubDate);
-      return pubDate >= yesterdayStart && pubDate <= now;
-    });
-    
-    console.log(`日期过滤: ${rawNews.length} 条 → ${dateFilteredNews.length} 条 (昨天至今)`);
-    
-    // 3. 去重：过滤掉昨天日报中已经包含的新闻
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayKey = toLocalDateKey(yesterday);
-    const yesterdayReport = reportStore.getByDate(yesterdayKey);
-    const yesterdayTitles = new Set(
-      yesterdayReport?.newsList?.map((n) => n.title) || []
-    );
-    if (yesterdayReport) {
-      console.log(`读取到昨天日报 ${yesterdayTitles.size} 条标题`);
-    } else {
-      console.log(`没有找到昨天的日报: report-${yesterdayKey}.json`);
-    }
-
-    const newsToFilter = dateFilteredNews.length > 0 ? dateFilteredNews : rawNews;
-    const uniqueNews = newsToFilter.filter(news => !yesterdayTitles.has(news.title));
-    
-    console.log(`去重过滤: ${newsToFilter.length} 条 → ${uniqueNews.length} 条 (去除与昨天重复)`);
-    
-    // 如果去重后没有新闻，使用去重前的
-    if (uniqueNews.length === 0) {
-      console.warn('去重后没有新闻，使用全部新闻');
-    }
-    
-    const finalNews = uniqueNews.length > 0 ? uniqueNews : newsToFilter;
-    
-    // 4. 格式化新闻
-    const newsList = formatNewsList(finalNews);
-    
-    // 5. 使用AI总结
-    const summary = await summarizeNews(newsList);
-    
-    // 6. 准备报告数据
-    const dateStr = now.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long',
-    });
-    
-    const report = {
-      date: dateStr,
-      updateTime: now.toLocaleString('zh-CN'),
-      newsCount: newsList.length,
-      content: summary,
-      newsList: newsList,
-    };
-    
-    // 7. 保存报告
-    const dateKey = toLocalDateKey(now);
-    reportStore.save(dateKey, report);
-    console.log(`报告已保存: latest.json + report-${dateKey}.json`);
-    
-    console.log('日报生成完成');
-    return report;
-  } catch (error) {
-    console.error('生成日报失败:', error);
-    return null;
-  }
+  return dailyReportPipeline.generateDailyReport();
 }
 
 /**
