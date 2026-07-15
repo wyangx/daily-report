@@ -1,54 +1,21 @@
 import { config } from '../config.js';
+import { createOpenAiCompatibleAdapter } from './openai-adapter.js';
 
-/**
- * 调用AI API进行总结
- */
-async function callAiApi(prompt) {
-  const { baseUrl, apiKey, model } = config.ai;
-  
-  if (!apiKey) {
-    throw new Error('未配置AI API Key，请在 .env 文件中设置 AI_API_KEY');
-  }
-  
-  const url = `${baseUrl}/chat/completions`;
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        {
-          role: 'system',
-          content: `你是一位资深科技媒体主编，擅长从海量新闻中提炼核心洞察，撰写深度分析型日报。
+const SUMMARY_SYSTEM_PROMPT = `你是一位资深科技媒体主编，擅长从海量新闻中提炼核心洞察，撰写深度分析型日报。
 
 你的写作风格：
 - 标题要精准概括当日最重要的趋势或事件
 - 核心要点不是简单摘要，而是深度分析：解释"为什么重要"、"意味着什么"、"接下来关注什么"
 - 用简洁有力的语言，避免冗余
 - 按领域分类时，要将相关新闻串联成叙事，而非简单罗列
-- 引用新闻编号 [#N] 方便溯源`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 8000,
-    }),
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`AI API 请求失败: ${response.status} - ${errorText}`);
-  }
-  
-  const data = await response.json();
-  return data.choices[0]?.message?.content || '';
+- 引用新闻编号 [#N] 方便溯源`;
+
+function createSilentLogger() {
+  return {
+    log() {},
+    warn() {},
+    error() {},
+  };
 }
 
 /**
@@ -101,76 +68,81 @@ ${newsText}
 请生成日报：`;
 }
 
+function cleanSummaryContent(content) {
+  let summary = content.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
+  summary = summary.trim();
+
+  if (summary.startsWith('{') && summary.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(summary);
+      if (parsed.content) summary = parsed.content;
+      else if (parsed.text) summary = parsed.text;
+      else if (parsed.message) summary = parsed.message;
+    } catch {
+      summary = summary
+        .replace(/^\{[\s\S]*?"?content"?\s*:\s*"?/, '')
+        .replace(/"?[\s]*\}$/, '');
+    }
+  }
+
+  return summary.replace(/^[\s{"]+/, '').replace(/[\s}"]+$/, '');
+}
+
+function looksLikeAiError(summary) {
+  const errorPatterns = [
+    'request was rejected',
+    'high risk',
+    'error',
+    'failed',
+    'denied',
+  ];
+
+  return errorPatterns.some((pattern) =>
+    summary.toLowerCase().includes(pattern.toLowerCase())
+  );
+}
+
 /**
- * 使用AI总结新闻
+ * 创建新闻总结 module
  */
-export async function summarizeNews(newsList) {
-  if (!newsList || newsList.length === 0) {
-    return '今日暂无新闻。';
-  }
-  
-  console.log(`开始使用AI总结 ${newsList.length} 条新闻...`);
-  
-  try {
-    const prompt = buildSummaryPrompt(newsList);
-    let summary = await callAiApi(prompt);
-    
-    // 清理系统消息标签
-    summary = summary.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
-    
-    // 清理可能的JSON格式包装
-    summary = summary.trim();
-    if (summary.startsWith('{') && summary.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(summary);
-        if (parsed.content) summary = parsed.content;
-        else if (parsed.text) summary = parsed.text;
-        else if (parsed.message) summary = parsed.message;
-      } catch (e) {
-        // 不是有效JSON，移除首尾大括号
-        summary = summary.replace(/^\{[\s\S]*?"?content"?\s*:\s*"?/, '').replace(/"?[\s]*\}$/, '');
+export function createNewsSummarizer({
+  aiAdapter,
+  getNow = () => new Date(),
+  logger = createSilentLogger(),
+}) {
+  async function summarizeNews(newsList) {
+    if (!newsList || newsList.length === 0) {
+      return '今日暂无新闻。';
+    }
+
+    logger.log(`开始使用AI总结 ${newsList.length} 条新闻...`);
+
+    try {
+      const prompt = buildSummaryPrompt(newsList);
+      let summary = await aiAdapter.complete(prompt);
+      summary = cleanSummaryContent(summary);
+
+      if (summary.length < 100) {
+        logger.warn('AI返回的内容太短，使用备用总结');
+        return generateFallbackSummary(newsList, getNow);
       }
+
+      if (looksLikeAiError(summary) && summary.length < 500) {
+        logger.warn('AI返回的内容包含错误信息，使用备用总结');
+        return generateFallbackSummary(newsList, getNow);
+      }
+
+      summary = convertReferencesToLinks(summary, newsList);
+
+      logger.log('AI总结完成');
+      return summary.trim();
+    } catch (error) {
+      logger.error('AI总结失败:', error.message);
+      return generateFallbackSummary(newsList, getNow);
     }
-    
-    // 清理首尾可能残留的引号和大括号
-    summary = summary.replace(/^[\s{"]+/, '').replace(/[\s}"]+$/, '');
-    
-    // 验证返回的内容是否是有效的日报（至少100个字符）
-    if (summary.length < 100) {
-      console.warn('AI返回的内容太短，使用备用总结');
-      return generateFallbackSummary(newsList);
-    }
-    
-    // 检查是否包含错误信息
-    const errorPatterns = [
-      'request was rejected',
-      'high risk',
-      'error',
-      'Error',
-      'failed',
-      'denied'
-    ];
-    
-    const hasError = errorPatterns.some(pattern => 
-      summary.toLowerCase().includes(pattern.toLowerCase())
-    );
-    
-    if (hasError && summary.length < 500) {
-      console.warn('AI返回的内容包含错误信息，使用备用总结');
-      return generateFallbackSummary(newsList);
-    }
-    
-    // 将 [#N] 引用转换为可点击链接
-    summary = convertReferencesToLinks(summary, newsList);
-    
-    console.log('AI总结完成');
-    return summary.trim();
-  } catch (error) {
-    console.error('AI总结失败:', error.message);
-    
-    // 如果AI总结失败，返回简单的列表格式
-    return generateFallbackSummary(newsList);
   }
+
+  return { summarizeNews };
 }
 
 /**
@@ -179,12 +151,10 @@ export async function summarizeNews(newsList) {
 export function convertReferencesToLinks(content, newsList) {
   // 处理多个引用在一起的情况，如 [#1, #5] 或 [#1,#2,#3]
   return content.replace(/\[#([\d,\s#]+)\]/g, (match, numsStr) => {
-    // 提取所有数字
     const nums = numsStr.match(/\d+/g);
     if (!nums) return match;
     
-    // 为每个数字创建链接
-    const links = nums.map(num => {
+    const links = nums.map((num) => {
       const index = parseInt(num) - 1;
       if (index >= 0 && index < newsList.length) {
         const news = newsList[index];
@@ -200,14 +170,13 @@ export function convertReferencesToLinks(content, newsList) {
 /**
  * 生成备用总结（当AI不可用时）
  */
-export function generateFallbackSummary(newsList) {
-  const date = new Date().toLocaleDateString('zh-CN');
+export function generateFallbackSummary(newsList, getNow = () => new Date()) {
+  const date = getNow().toLocaleDateString('zh-CN');
   
   let markdown = `# 每日新闻日报\n\n`;
   markdown += `**日期**: ${date} | **新闻数量**: ${newsList.length} 条\n\n`;
   markdown += `---\n\n`;
   
-  // 按分类分组
   const groups = {};
   for (const news of newsList) {
     const category = news.category || '未分类';
@@ -217,7 +186,6 @@ export function generateFallbackSummary(newsList) {
     groups[category].push(news);
   }
   
-  // 生成各类别的新闻列表
   for (const [category, items] of Object.entries(groups)) {
     markdown += `## ${category}\n\n`;
     
@@ -233,4 +201,21 @@ export function generateFallbackSummary(newsList) {
   }
   
   return markdown;
+}
+
+const defaultAiAdapter = createOpenAiCompatibleAdapter({
+  ...config.ai,
+  systemPrompt: SUMMARY_SYSTEM_PROMPT,
+});
+
+const defaultSummarizer = createNewsSummarizer({
+  aiAdapter: defaultAiAdapter,
+  logger: console,
+});
+
+/**
+ * 使用AI总结新闻（生产兼容入口）
+ */
+export async function summarizeNews(newsList) {
+  return defaultSummarizer.summarizeNews(newsList);
 }
