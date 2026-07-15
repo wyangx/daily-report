@@ -1,12 +1,10 @@
-/**
- * 本地日历日 YYYY-MM-DD（不用 UTC，避免凌晨错日）
- */
-export function toLocalDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import {
+  formatDateTime,
+  formatDisplayDate,
+  toLocalDateKey,
+} from './date-policy.js';
+
+export { toLocalDateKey } from './date-policy.js';
 
 function createSilentLogger() {
   return {
@@ -77,16 +75,9 @@ export function createDailyReportPipeline({
       const newsList = formatNewsList(finalNews);
       const summary = await summarizeNews(newsList);
 
-      const dateStr = now.toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long',
-      });
-
       const report = {
-        date: dateStr,
-        updateTime: now.toLocaleString('zh-CN'),
+        date: formatDisplayDate(now),
+        updateTime: formatDateTime(now),
         newsCount: newsList.length,
         content: summary,
         newsList,

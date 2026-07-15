@@ -30,7 +30,7 @@ cp .env.example .env
 编辑 `.env` 文件：
 
 ```env
-# AI API 配置（必填，用于新闻总结）
+# AI API 配置（可选；未配置时使用备用列表格式）
 AI_BASE_URL=https://api.openai.com/v1
 AI_API_KEY=your_api_key_here
 AI_MODEL=gpt-3.5-turbo
@@ -81,12 +81,17 @@ daily-report/
 ├── src/
 │   ├── index.js          # 主入口
 │   ├── config.js         # 配置管理
-│   ├── scheduler.js      # 定时任务
+│   ├── scheduler.js      # 定时任务触发
 │   ├── rss/
 │   │   ├── fetcher.js    # RSS 抓取
 │   │   └── parser.js     # 数据解析
 │   ├── ai/
-│   │   └── summarizer.js # AI 总结
+│   │   ├── openai-adapter.js # OpenAI 兼容接口适配
+│   │   └── summarizer.js     # 新闻总结、清洗和备用总结
+│   ├── report/
+│   │   ├── date-policy.js # 报告日期键和展示日期策略
+│   │   ├── pipeline.js    # 日报生成流水线
+│   │   └── store.js       # 日报读写存储
 │   └── web/
 │       ├── server.js     # Web 服务器
 │       └── templates/    # HTML 模板
@@ -140,6 +145,12 @@ npm run pm2:stop
 npm run pm2:delete
 ```
 
+代码更新后，PM2 中已运行的 Node 进程不会自动加载新代码，需要重启：
+
+```bash
+npm run pm2:restart
+```
+
 #### 设置开机自启
 
 ```bash
@@ -158,9 +169,18 @@ pm2 save
 - `0 */6 * * *` - 每 6 小时
 - `0 9 * * 1-5` - 工作日 9:00
 
+## 测试
+
+```bash
+npm test
+```
+
+测试覆盖 AI 总结、OpenAI 兼容接口适配、日报流水线、报告存储和日期策略。
+
 ## 注意事项
 
 - 如果未配置 AI API Key，系统会使用简单的列表格式生成日报
 - RSS 源需要可公开访问
 - 日报数据保存在 `data/news/` 目录
+- 报告归档文件使用本地日历日命名：`report-YYYY-MM-DD.json`
 - PM2 日志保存在 `logs/` 目录

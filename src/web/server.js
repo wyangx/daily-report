@@ -5,6 +5,10 @@ import { dirname, join } from 'path';
 import { marked } from 'marked';
 import { config } from '../config.js';
 import { createFsReportStore } from '../report/store.js';
+import {
+  formatDisplayDate,
+  parseLocalDateKey,
+} from '../report/date-policy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,17 +23,6 @@ app.use(express.static(config.paths.public));
 function loadTemplate(name) {
   const templatePath = join(__dirname, 'templates', `${name}.html`);
   return readFileSync(templatePath, 'utf-8');
-}
-
-// 格式化日期
-function formatDate(dateStr) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long'
-  });
 }
 
 // 清理并转换Markdown内容
@@ -56,12 +49,7 @@ function renderReportPage(report, res) {
   
   if (!report) {
     const now = new Date();
-    const dateStr = now.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long',
-    });
+    const dateStr = formatDisplayDate(now);
     
     const html = template
       .replace(/\{\{title\}\}/g, '每日新闻日报')
@@ -112,7 +100,7 @@ app.get('/archives', (req, res) => {
   const archives = reportStore.listArchives();
 
   const reportsHtml = archives.map((entry) => {
-    const displayDate = formatDate(entry.dateKey);
+    const displayDate = formatDisplayDate(parseLocalDateKey(entry.dateKey));
     const preview = extractTitle(entry.content) || '点击查看详细内容';
     return `
     <a href="/archives/${entry.dateKey}" class="archive-card">
@@ -124,12 +112,7 @@ app.get('/archives', (req, res) => {
   }).join('');
   
   const now = new Date();
-  const dateStr = now.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  });
+  const dateStr = formatDisplayDate(now);
   
   const html = template
     .replace(/\{\{#each reports\}\}[\s\S]*?\{\{\/each\}\}/, reportsHtml)

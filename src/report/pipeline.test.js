@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createDailyReportPipeline, toLocalDateKey } from './pipeline.js';
+import { createDailyReportPipeline } from './pipeline.js';
 import { createMemoryReportStore } from './store.js';
 
 const fixedNow = new Date(2026, 6, 14, 15, 30, 0);
@@ -54,12 +54,6 @@ function createPipeline(overrides = {}) {
     fetchNews,
   };
 }
-
-describe('toLocalDateKey', () => {
-  it('使用本地日历日格式化 dateKey', () => {
-    expect(toLocalDateKey(new Date(2026, 6, 4, 1, 2, 3))).toBe('2026-07-04');
-  });
-});
 
 describe('createDailyReportPipeline', () => {
   it('生成日报并保存到今天的 dateKey', async () => {
