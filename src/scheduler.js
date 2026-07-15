@@ -2,17 +2,25 @@ import cron from 'node-cron';
 import { config } from './config.js';
 import { fetchAllNews } from './rss/fetcher.js';
 import { formatNewsList } from './rss/parser.js';
-import { summarizeNews } from './ai/summarizer.js';
+import { createNewsSummarizer } from './ai/summarizer.js';
+import { createOpenAiCompatibleAdapter } from './ai/openai-adapter.js';
 import { createFsReportStore } from './report/store.js';
 import { createDailyReportPipeline } from './report/pipeline.js';
 
+const getNow = () => new Date();
 const reportStore = createFsReportStore(config.paths.news);
+const aiAdapter = createOpenAiCompatibleAdapter(config.ai);
+const newsSummarizer = createNewsSummarizer({
+  aiAdapter,
+  getNow,
+  logger: console,
+});
 const dailyReportPipeline = createDailyReportPipeline({
   fetchNews: fetchAllNews,
   formatNewsList,
-  summarizeNews,
+  summarizeNews: newsSummarizer.summarizeNews,
   reportStore,
-  getNow: () => new Date(),
+  getNow,
   logger: console,
 });
 

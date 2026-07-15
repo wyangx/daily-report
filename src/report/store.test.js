@@ -62,6 +62,13 @@ function assertStoreContract(createStore) {
       expect(store.getByDate('2026-01-01')).toEqual(weird);
     });
 
+    it('使用 JSON round-trip 语义存取', () => {
+      store.save('2026-01-02', { createdAt: new Date('2026-01-02T03:04:05.000Z') });
+      expect(store.getByDate('2026-01-02')).toEqual({
+        createdAt: '2026-01-02T03:04:05.000Z',
+      });
+    });
+
     it('getLatest 随最后一次 save 更新', () => {
       store.save('2026-07-13', { newsCount: 1, content: 'a' });
       store.save('2026-07-14', { newsCount: 3, content: 'b' });

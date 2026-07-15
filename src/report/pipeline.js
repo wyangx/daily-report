@@ -4,8 +4,6 @@ import {
   toLocalDateKey,
 } from './date-policy.js';
 
-export { toLocalDateKey } from './date-policy.js';
-
 function createSilentLogger() {
   return {
     log() {},

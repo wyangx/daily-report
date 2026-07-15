@@ -63,8 +63,9 @@ describe('createDailyReportPipeline', () => {
 
     expect(formatNewsList).toHaveBeenCalledWith([createNews()]);
     expect(summarizeNews).toHaveBeenCalledWith(report.newsList);
-    expect(report).toEqual(reportStore.getLatest());
-    expect(reportStore.getByDate('2026-07-14')).toEqual(report);
+    const storedReport = JSON.parse(JSON.stringify(report));
+    expect(reportStore.getLatest()).toEqual(storedReport);
+    expect(reportStore.getByDate('2026-07-14')).toEqual(storedReport);
     expect(report.newsCount).toBe(1);
     expect(report.content).toBe('日报正文');
   });

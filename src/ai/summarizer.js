@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { createOpenAiCompatibleAdapter } from './openai-adapter.js';
 
-const SUMMARY_SYSTEM_PROMPT = `你是一位资深科技媒体主编，擅长从海量新闻中提炼核心洞察，撰写深度分析型日报。
+const summarySystemPrompt = `你是一位资深科技媒体主编，擅长从海量新闻中提炼核心洞察，撰写深度分析型日报。
 
 你的写作风格：
 - 标题要精准概括当日最重要的趋势或事件
@@ -30,7 +30,9 @@ export function buildSummaryPrompt(newsList) {
 摘要：${news.summary || '无摘要'}`;
   }).join('\n\n');
   
-  return `请将以下新闻整理成一篇深度分析型日报。
+  return `${summarySystemPrompt}
+
+请将以下新闻整理成一篇深度分析型日报。
 
 ## 输出格式要求
 
@@ -103,7 +105,7 @@ function looksLikeAiError(summary) {
 }
 
 /**
- * 创建新闻总结 module
+ * 创建新闻总结模块
  */
 export function createNewsSummarizer({
   aiAdapter,
@@ -205,7 +207,6 @@ export function generateFallbackSummary(newsList, getNow = () => new Date()) {
 
 const defaultAiAdapter = createOpenAiCompatibleAdapter({
   ...config.ai,
-  systemPrompt: SUMMARY_SYSTEM_PROMPT,
 });
 
 const defaultSummarizer = createNewsSummarizer({

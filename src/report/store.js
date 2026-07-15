@@ -18,11 +18,11 @@ export function createFsReportStore(newsDir) {
     }
   }
 
-  function archivePath(dateKey) {
+  function getArchivePath(dateKey) {
     return join(newsDir, `report-${dateKey}.json`);
   }
 
-  function latestPath() {
+  function getLatestPath() {
     return join(newsDir, 'latest.json');
   }
 
@@ -42,16 +42,16 @@ export function createFsReportStore(newsDir) {
     save(dateKey, report) {
       ensureDir();
       const payload = JSON.stringify(report, null, 2);
-      writeFileSync(latestPath(), payload);
-      writeFileSync(archivePath(dateKey), payload);
+      writeFileSync(getLatestPath(), payload);
+      writeFileSync(getArchivePath(dateKey), payload);
     },
 
     getLatest() {
-      return readJson(latestPath());
+      return readJson(getLatestPath());
     },
 
     getByDate(dateKey) {
-      return readJson(archivePath(dateKey));
+      return readJson(getArchivePath(dateKey));
     },
 
     listArchives() {
@@ -92,23 +92,27 @@ export function createMemoryReportStore() {
   let latest = null;
   const archives = new Map();
 
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
   return {
     save(dateKey, report) {
-      // 深拷贝，避免调用方后续改动污染存储
-      const copy = structuredClone(report);
+      // 模拟文件系统存储的 JSON 序列化语义
+      const copy = cloneJson(report);
       latest = copy;
-      archives.set(dateKey, structuredClone(report));
+      archives.set(dateKey, cloneJson(report));
     },
 
     getLatest() {
-      return latest === null ? null : structuredClone(latest);
+      return latest === null ? null : cloneJson(latest);
     },
 
     getByDate(dateKey) {
       if (!archives.has(dateKey)) {
         return null;
       }
-      return structuredClone(archives.get(dateKey));
+      return cloneJson(archives.get(dateKey));
     },
 
     listArchives() {

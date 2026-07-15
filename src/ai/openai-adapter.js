@@ -1,14 +1,11 @@
-const DEFAULT_SYSTEM_PROMPT = '';
-
 /**
- * OpenAI 兼容接口 adapter
+ * OpenAI 兼容接口适配器
  */
 export function createOpenAiCompatibleAdapter({
   baseUrl,
   apiKey,
   model,
   fetch: fetchImpl = globalThis.fetch,
-  systemPrompt = DEFAULT_SYSTEM_PROMPT,
 }) {
   return {
     async complete(prompt) {
@@ -20,12 +17,6 @@ export function createOpenAiCompatibleAdapter({
         throw new Error('当前运行环境不支持 fetch');
       }
 
-      const messages = [];
-      if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt });
-      }
-      messages.push({ role: 'user', content: prompt });
-
       const response = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -34,7 +25,7 @@ export function createOpenAiCompatibleAdapter({
         },
         body: JSON.stringify({
           model,
-          messages,
+          messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
           max_tokens: 8000,
         }),
