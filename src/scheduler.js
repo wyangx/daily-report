@@ -1,40 +1,20 @@
 import cron from 'node-cron';
-import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
 import { config } from './config.js';
 import { fetchAllNews } from './rss/fetcher.js';
 import { formatNewsList } from './rss/parser.js';
 import { summarizeNews } from './ai/summarizer.js';
+import { createFsReportStore } from './report/store.js';
+
+const reportStore = createFsReportStore(config.paths.news);
 
 /**
- * 获取昨天日报的标题集合
+ * 本地日历日 YYYY-MM-DD（不用 UTC，避免凌晨错日）
  */
-function getYesterdayTitles() {
-  const newsDir = config.paths.news;
-  
-  // 计算昨天的日期
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
-  
-  // 读取昨天的日报文件
-  const yesterdayPath = join(newsDir, `report-${yesterdayStr}.json`);
-  
-  if (!existsSync(yesterdayPath)) {
-    console.log(`没有找到昨天的日报: ${yesterdayPath}`);
-    return new Set();
-  }
-  
-  try {
-    const data = readFileSync(yesterdayPath, 'utf-8');
-    const report = JSON.parse(data);
-    const titles = new Set(report.newsList.map(n => n.title));
-    console.log(`读取到昨天日报 ${titles.size} 条标题`);
-    return titles;
-  } catch (error) {
-    console.error('读取昨天日报失败:', error.message);
-    return new Set();
-  }
+function toLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -66,7 +46,19 @@ export async function generateDailyReport() {
     console.log(`日期过滤: ${rawNews.length} 条 → ${dateFilteredNews.length} 条 (昨天至今)`);
     
     // 3. 去重：过滤掉昨天日报中已经包含的新闻
-    const yesterdayTitles = getYesterdayTitles();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = toLocalDateKey(yesterday);
+    const yesterdayReport = reportStore.getByDate(yesterdayKey);
+    const yesterdayTitles = new Set(
+      yesterdayReport?.newsList?.map((n) => n.title) || []
+    );
+    if (yesterdayReport) {
+      console.log(`读取到昨天日报 ${yesterdayTitles.size} 条标题`);
+    } else {
+      console.log(`没有找到昨天的日报: report-${yesterdayKey}.json`);
+    }
+
     const newsToFilter = dateFilteredNews.length > 0 ? dateFilteredNews : rawNews;
     const uniqueNews = newsToFilter.filter(news => !yesterdayTitles.has(news.title));
     
@@ -102,7 +94,9 @@ export async function generateDailyReport() {
     };
     
     // 7. 保存报告
-    saveReport(report);
+    const dateKey = toLocalDateKey(now);
+    reportStore.save(dateKey, report);
+    console.log(`报告已保存: latest.json + report-${dateKey}.json`);
     
     console.log('日报生成完成');
     return report;
@@ -110,29 +104,6 @@ export async function generateDailyReport() {
     console.error('生成日报失败:', error);
     return null;
   }
-}
-
-/**
- * 保存报告到文件
- */
-function saveReport(report) {
-  const newsDir = config.paths.news;
-  
-  // 确保目录存在
-  if (!existsSync(newsDir)) {
-    mkdirSync(newsDir, { recursive: true });
-  }
-  
-  // 保存最新报告
-  const latestPath = join(newsDir, 'latest.json');
-  writeFileSync(latestPath, JSON.stringify(report, null, 2));
-  
-  // 保存带日期的备份
-  const dateStr = new Date().toISOString().split('T')[0];
-  const backupPath = join(newsDir, `report-${dateStr}.json`);
-  writeFileSync(backupPath, JSON.stringify(report, null, 2));
-  
-  console.log(`报告已保存: ${latestPath}`);
 }
 
 /**

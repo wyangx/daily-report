@@ -1,14 +1,16 @@
 import express from 'express';
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { marked } from 'marked';
 import { config } from '../config.js';
+import { createFsReportStore } from '../report/store.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+const reportStore = createFsReportStore(config.paths.news);
 
 // 静态文件服务
 app.use(express.static(config.paths.public));
@@ -17,63 +19,6 @@ app.use(express.static(config.paths.public));
 function loadTemplate(name) {
   const templatePath = join(__dirname, 'templates', `${name}.html`);
   return readFileSync(templatePath, 'utf-8');
-}
-
-// 获取最新的日报数据
-function getLatestReport() {
-  const reportPath = join(config.paths.news, 'latest.json');
-  
-  if (!existsSync(reportPath)) {
-    return null;
-  }
-  
-  try {
-    const data = readFileSync(reportPath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('读取日报数据失败:', error.message);
-    return null;
-  }
-}
-
-// 获取所有往期日报列表
-function getArchivedReports() {
-  const newsDir = config.paths.news;
-  
-  if (!existsSync(newsDir)) {
-    return [];
-  }
-  
-  try {
-    const files = readdirSync(newsDir)
-      .filter(file => file.startsWith('report-') && file.endsWith('.json'))
-      .sort()
-      .reverse();
-    
-    return files.map(file => {
-      const date = file.replace('report-', '').replace('.json', '');
-      try {
-        const data = readFileSync(join(newsDir, file), 'utf-8');
-        const report = JSON.parse(data);
-        return {
-          date,
-          displayDate: formatDate(date),
-          newsCount: report.newsCount || 0,
-          preview: extractTitle(report.content) || '点击查看详细内容'
-        };
-      } catch {
-        return {
-          date,
-          displayDate: formatDate(date),
-          newsCount: 0,
-          preview: '数据读取失败'
-        };
-      }
-    });
-  } catch (error) {
-    console.error('读取往期日报列表失败:', error.message);
-    return [];
-  }
 }
 
 // 格式化日期
@@ -85,23 +30,6 @@ function formatDate(dateStr) {
     day: 'numeric',
     weekday: 'long'
   });
-}
-
-// 获取指定日期的日报
-function getReportByDate(date) {
-  const reportPath = join(config.paths.news, `report-${date}.json`);
-  
-  if (!existsSync(reportPath)) {
-    return null;
-  }
-  
-  try {
-    const data = readFileSync(reportPath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error(`读取日报 ${date} 失败:`, error.message);
-    return null;
-  }
 }
 
 // 清理并转换Markdown内容
@@ -174,22 +102,26 @@ function renderReportPage(report, res) {
 
 // 首页路由
 app.get('/', (req, res) => {
-  const report = getLatestReport();
+  const report = reportStore.getLatest();
   renderReportPage(report, res);
 });
 
 // 往期日报列表路由
 app.get('/archives', (req, res) => {
   const template = loadTemplate('archives');
-  const reports = getArchivedReports();
-  
-  const reportsHtml = reports.map(report => `
-    <a href="/archives/${report.date}" class="archive-card">
-      <div class="archive-date">${report.displayDate}</div>
-      <div class="archive-meta">${report.newsCount} 条新闻</div>
-      <div class="archive-preview">${report.preview}</div>
+  const archives = reportStore.listArchives();
+
+  const reportsHtml = archives.map((entry) => {
+    const displayDate = formatDate(entry.dateKey);
+    const preview = extractTitle(entry.content) || '点击查看详细内容';
+    return `
+    <a href="/archives/${entry.dateKey}" class="archive-card">
+      <div class="archive-date">${displayDate}</div>
+      <div class="archive-meta">${entry.newsCount} 条新闻</div>
+      <div class="archive-preview">${preview}</div>
     </a>
-  `).join('');
+  `;
+  }).join('');
   
   const now = new Date();
   const dateStr = now.toLocaleDateString('zh-CN', {
@@ -201,7 +133,7 @@ app.get('/archives', (req, res) => {
   
   const html = template
     .replace(/\{\{#each reports\}\}[\s\S]*?\{\{\/each\}\}/, reportsHtml)
-    .replace(/\{\{#if noReports\}\}[\s\S]*?\{\{\/if\}\}/, reports.length === 0 ? '<div class="empty-state"><p>暂无往期日报</p></div>' : '')
+    .replace(/\{\{#if noReports\}\}[\s\S]*?\{\{\/if\}\}/, archives.length === 0 ? '<div class="empty-state"><p>暂无往期日报</p></div>' : '')
     .replace('{{isoDate}}', now.toISOString())
     .replace('{{date}}', dateStr);
   
@@ -211,7 +143,7 @@ app.get('/archives', (req, res) => {
 // 往期日报详情路由
 app.get('/archives/:date', (req, res) => {
   const { date } = req.params;
-  const report = getReportByDate(date);
+  const report = reportStore.getByDate(date);
   
   if (!report) {
     return res.status(404).send('日报不存在');
@@ -270,7 +202,7 @@ function extractTitle(content) {
 
 // API路由 - 获取最新日报JSON
 app.get('/api/report', (req, res) => {
-  const report = getLatestReport();
+  const report = reportStore.getLatest();
   
   if (!report) {
     return res.json({ success: false, message: '暂无日报数据' });
@@ -281,7 +213,7 @@ app.get('/api/report', (req, res) => {
 
 // API路由 - 获取新闻列表
 app.get('/api/news', (req, res) => {
-  const report = getLatestReport();
+  const report = reportStore.getLatest();
   
   if (!report || !report.newsList) {
     return res.json({ success: false, message: '暂无新闻数据' });
